@@ -1,0 +1,89 @@
+{
+  "name": "feedchecker-desktop",
+  "version": "1.0.0",
+  "description": "FeedChecker Desktop Application",
+  "author": "FeedChecker Team",
+  "main": "main/index.js",
+  "scripts": {
+    "setup": "powershell -ExecutionPolicy Bypass -File copy-files.ps1",
+    "dev": "concurrently \"npm run dev:electron\" \"npm run dev:renderer\" \"npm run dev:backend\"",
+    "dev:electron": "electron .",
+    "dev:renderer": "cd renderer && npm run dev",
+    "dev:backend": "cd backend && py -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload",
+    "build": "npm run build:renderer && electron-builder",
+    "build:renderer": "cd renderer && npm run build",
+    "build:portable": "powershell -ExecutionPolicy Bypass -File build-portable.ps1",
+    "build:portable:mac": "bash build-portable.sh",
+    "build:portable:docker": "powershell -ExecutionPolicy Bypass -File build-with-docker.ps1",
+    "build:portable:docker:mac": "bash build-with-docker.sh",
+    "postinstall": "electron-builder install-app-deps",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.feedchecker.desktop",
+    "productName": "FeedChecker",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main/**/*",
+      "renderer/dist/**/*",
+      "backend/**/*",
+      "install-dependencies.bat",
+      "install-dependencies-safe.bat",
+      "TROUBLESHOOTING.md",
+      "QUICK_FIX.md",
+      "AUTO_INSTALL_INFO.md",
+      "ДЛЯ_КОЛЛЕГИ.txt",
+      "!backend/**/__pycache__",
+      "!backend/**/*.pyc",
+      "!backend/**/node_modules",
+      "!backend/**/.git"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "sign": null,
+      "signingHashAlgorithms": null,
+      "verifyUpdateCodeSignature": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "forceCodeSigning": false,
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": ["**/*"]
+      }
+    ]
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "electron-updater": "^6.1.7"
+  }
+}
+

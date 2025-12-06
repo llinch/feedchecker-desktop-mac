@@ -1,0 +1,15 @@
+node_modules/
+dist/
+renderer/node_modules/
+renderer/dist/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/.venv/
+backend/venv/
+*.log
+.DS_Store
+Thumbs.db
+portable/
+
+

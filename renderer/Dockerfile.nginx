@@ -1,0 +1,42 @@
+# Multi-stage build for Frontend
+# Stage 1: Build
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Build arguments
+ARG VITE_API_URL=
+
+# Copy package files (build context is project root)
+COPY apps/frontend/package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source (build context is project root)
+COPY apps/frontend/ ./
+
+# Create .env.production
+RUN echo "VITE_API_URL=$VITE_API_URL" > .env.production
+
+# Build
+RUN npm run build
+
+# Verify dist exists
+RUN ls -la dist/ || (echo "ERROR: dist/ not found after build!" && exit 1)
+
+# Stage 2: Serve with Nginx
+FROM nginx:1.27-alpine
+
+# Copy built files
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy nginx config (build context is project root)
+COPY apps/frontend/nginx.conf.template /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,31 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Testing
+coverage
+
+# Production
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment variables - локальные
+.env.local
+.env.development.local
+.env.test.local
+# НЕ игнорируем .env.production - он нужен для CI/CD
+# НЕ игнорируем .env.development - он нужен для разработки
+
