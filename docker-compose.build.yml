@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  builder:
+    build:
+      context: .
+      dockerfile: Dockerfile.build
+    volumes:
+      # Монтируем папку для экспорта артефактов
+      - ./docker-build-output:/export
+      # Кэш npm для ускорения сборки
+      - npm-cache:/root/.npm
+    environment:
+      - NODE_ENV=production
+    # Команда по умолчанию экспортирует артефакты
+    command: /export.sh
+
+volumes:
+  npm-cache:
+  pip-cache:
+

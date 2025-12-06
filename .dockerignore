@@ -1,0 +1,69 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Node modules
+node_modules
+renderer/node_modules
+**/node_modules
+
+# Build outputs
+dist
+portable
+docker-build-output
+build
+
+# Python
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+**/venv
+**/env
+**/.venv
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Documentation (не нужна в образе)
+*.md
+!backend/README.md
+!renderer/README.md
+
+# Temporary files
+*.tmp
+*.temp
+.cache
+
+# Electron
+dist/
+out/
+release/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+

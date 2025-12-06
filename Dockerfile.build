@@ -1,0 +1,88 @@
+# Multi-stage Dockerfile для сборки FeedChecker Desktop
+# Этот Dockerfile собирает frontend и подготавливает Python зависимости
+# Финальная сборка Electron выполняется на хосте
+
+# Stage 1: Build Frontend
+FROM node:18-alpine AS frontend-builder
+
+WORKDIR /app/renderer
+
+# Копируем package файлы
+COPY renderer/package*.json ./
+
+# Устанавливаем зависимости
+RUN npm ci
+
+# Копируем исходники фронтенда
+COPY renderer/ ./
+
+# Собираем production версию
+RUN npm run build
+
+# Stage 2: Prepare Python Environment
+FROM python:3.11-slim AS python-builder
+
+WORKDIR /app
+
+# Устанавливаем системные зависимости для компиляции некоторых пакетов
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копируем requirements
+COPY backend/requirements.txt ./
+
+# Создаем виртуальное окружение и устанавливаем зависимости
+RUN python -m venv /venv && \
+    /venv/bin/pip install --upgrade pip wheel && \
+    /venv/bin/pip install --prefer-binary -r requirements.txt
+
+# Stage 3: Final stage - собираем все вместе
+FROM alpine:latest AS final
+
+WORKDIR /app
+
+# Устанавливаем необходимые инструменты
+RUN apk add --no-cache \
+    nodejs \
+    npm \
+    python3 \
+    py3-pip \
+    bash
+
+# Копируем собранный frontend
+COPY --from=frontend-builder /app/renderer/dist ./renderer/dist
+
+# Копируем Python виртуальное окружение
+COPY --from=python-builder /venv ./python_venv
+
+# Копируем backend код
+COPY backend/ ./backend/
+
+# Копируем main процесс Electron
+COPY main/ ./main/
+
+# Копируем package.json
+COPY package.json ./
+COPY package-lock.json* ./
+
+# Устанавливаем зависимости Electron (только для сборки)
+RUN npm install --production=false
+
+# Создаем скрипт для экспорта артефактов
+RUN echo '#!/bin/sh' > /export.sh && \
+    echo 'echo "Exporting build artifacts..."' >> /export.sh && \
+    echo 'cp -r /app/renderer/dist /export/renderer-dist' >> /export.sh && \
+    echo 'cp -r /app/python_venv /export/python-venv' >> /export.sh && \
+    echo 'cp -r /app/backend /export/backend' >> /export.sh && \
+    echo 'cp -r /app/main /export/main' >> /export.sh && \
+    echo 'cp /app/package.json /export/' >> /export.sh && \
+    echo 'cp /app/package-lock.json* /export/ 2>/dev/null || true' >> /export.sh && \
+    echo 'echo "Build artifacts exported to /export"' >> /export.sh && \
+    chmod +x /export.sh
+
+WORKDIR /app
+
+# По умолчанию экспортируем артефакты
+CMD ["/export.sh"]
+
