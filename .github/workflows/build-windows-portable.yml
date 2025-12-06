@@ -1,0 +1,135 @@
+name: Build Windows Portable
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (optional)'
+        required: false
+        type: string
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            renderer/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install renderer dependencies
+        working-directory: renderer
+        run: npm ci
+
+      - name: Build portable version
+        shell: pwsh
+        run: npm run build:portable
+        env:
+          NPM_CONFIG_FETCH_TIMEOUT: 600000
+
+      - name: Verify build artifacts
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "portable")) {
+            Write-Error "❌ Portable directory not found!"
+            exit 1
+          }
+          
+          if (-not (Test-Path "portable\FeedChecker.exe")) {
+            Write-Error "❌ FeedChecker.exe not found!"
+            exit 1
+          }
+          
+          if (-not (Test-Path "portable\resources\python")) {
+            Write-Error "❌ Python environment not found!"
+            exit 1
+          }
+          
+          if (-not (Test-Path "portable\resources\backend")) {
+            Write-Error "❌ Backend not found!"
+            exit 1
+          }
+          
+          Write-Host "✅ All build artifacts verified!"
+
+      - name: Get version
+        id: get_version
+        shell: pwsh
+        run: |
+          if ("${{ github.event.inputs.version }}" -ne "") {
+            $VERSION = "${{ github.event.inputs.version }}"
+          } elseif ("${{ github.ref_type }}" -eq "tag") {
+            $VERSION = "${{ github.ref }}".Replace("refs/tags/v", "")
+          } elseif ("${{ github.event.release.tag_name }}" -ne "") {
+            $VERSION = "${{ github.event.release.tag_name }}".Replace("v", "")
+          } else {
+            $VERSION = (Get-Content package.json | ConvertFrom-Json).version
+          }
+          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
+          Write-Host "📦 Building version: $VERSION"
+
+      - name: Create archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path portable\* -DestinationPath "FeedChecker-Windows-portable-v${{ steps.get_version.outputs.version }}.zip" -Force
+          Get-Item FeedChecker-Windows-portable-*.zip | ForEach-Object { Write-Host "Created: $($_.Name) ($([math]::Round($_.Length / 1MB, 2)) MB)" }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FeedChecker-Windows-portable-v${{ steps.get_version.outputs.version }}
+          path: |
+            portable/
+            FeedChecker-Windows-portable-v${{ steps.get_version.outputs.version }}.zip
+          retention-days: 30
+          compression-level: 0
+
+      - name: Create Release (if tag)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: FeedChecker-Windows-portable-v${{ steps.get_version.outputs.version }}.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        shell: pwsh
+        run: |
+          $size = (Get-ChildItem -Path portable -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
+          @"
+          ## ✅ Build Successful!
+          
+          **Version:** ${{ steps.get_version.outputs.version }}
+          
+          **Artifacts:**
+          - Portable app: \`portable/\`
+          - Archive: \`FeedChecker-Windows-portable-v${{ steps.get_version.outputs.version }}.zip\`
+          
+          **Size:** $([math]::Round($size, 2)) MB
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+

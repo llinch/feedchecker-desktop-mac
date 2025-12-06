@@ -1,0 +1,186 @@
+name: Build All Platforms
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (optional)'
+        required: false
+        type: string
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+
+jobs:
+  build-windows:
+    name: Build Windows Portable
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            renderer/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd renderer && npm ci && cd ..
+
+      - name: Build portable version
+        shell: pwsh
+        run: npm run build:portable
+
+      - name: Get version
+        id: get_version
+        shell: pwsh
+        run: |
+          if ("${{ github.event.inputs.version }}" -ne "") {
+            $VERSION = "${{ github.event.inputs.version }}"
+          } else {
+            $VERSION = (Get-Content package.json | ConvertFrom-Json).version
+          }
+          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
+
+      - name: Create archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path portable\* -DestinationPath "FeedChecker-Windows-portable-v${{ steps.get_version.outputs.version }}.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable
+          path: FeedChecker-Windows-portable-v${{ steps.get_version.outputs.version }}.zip
+          retention-days: 30
+
+  build-macos:
+    name: Build macOS Portable
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            renderer/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd renderer && npm ci && cd ..
+
+      - name: Make build script executable
+        run: chmod +x build-portable.sh
+
+      - name: Build portable version
+        run: npm run build:portable:mac
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event.inputs.version }}" != "" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create archive
+        run: |
+          cd portable
+          zip -r "../FeedChecker-macOS-portable-v${{ steps.get_version.outputs.version }}.zip" .
+          cd ..
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-portable
+          path: FeedChecker-macOS-portable-v${{ steps.get_version.outputs.version }}.zip
+          retention-days: 30
+
+  create-release:
+    name: Create Release
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event.inputs.version }}" != "" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*
+          draft: false
+          prerelease: false
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: Release v${{ steps.get_version.outputs.version }}
+          body: |
+            ## FeedChecker Desktop v${{ steps.get_version.outputs.version }}
+            
+            ### Portable Versions
+            
+            - **Windows**: FeedChecker-Windows-portable-v${{ steps.get_version.outputs.version }}.zip
+            - **macOS**: FeedChecker-macOS-portable-v${{ steps.get_version.outputs.version }}.zip
+            
+            ### What's Included
+            
+            - ✅ Electron application
+            - ✅ Embedded Python 3.11
+            - ✅ All Python dependencies pre-installed
+            - ✅ Backend ready to work
+            - ✅ No installation required!
+            
+            ### How to Use
+            
+            1. Download the archive for your platform
+            2. Extract it
+            3. Run FeedChecker.exe (Windows) or FeedChecker.app (macOS)
+            
+            No additional setup required!
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

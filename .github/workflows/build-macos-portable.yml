@@ -1,0 +1,134 @@
+name: Build macOS Portable
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (optional)'
+        required: false
+        type: string
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            renderer/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install renderer dependencies
+        working-directory: renderer
+        run: npm ci
+
+      - name: Make build script executable
+        run: chmod +x build-portable.sh
+
+      - name: Build portable version
+        run: npm run build:portable:mac
+        env:
+          # Увеличиваем таймаут для npm install в скрипте
+          NPM_CONFIG_FETCH_TIMEOUT: 600000
+
+      - name: Verify build artifacts
+        run: |
+          if [ ! -d "portable" ]; then
+            echo "❌ Portable directory not found!"
+            exit 1
+          fi
+          
+          if [ ! -d "portable/FeedChecker.app" ]; then
+            echo "❌ FeedChecker.app not found!"
+            exit 1
+          fi
+          
+          if [ ! -d "portable/FeedChecker.app/Contents/Resources/python" ]; then
+            echo "❌ Python environment not found in app bundle!"
+            exit 1
+          fi
+          
+          if [ ! -d "portable/FeedChecker.app/Contents/Resources/backend" ]; then
+            echo "❌ Backend not found in app bundle!"
+            exit 1
+          fi
+          
+          echo "✅ All build artifacts verified!"
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event.inputs.version }}" != "" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [ "${{ github.ref_type }}" == "tag" ]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          elif [ "${{ github.event.release.tag_name }}" != "" ]; then
+            VERSION="${GITHUB_EVENT_RELEASE_TAG_NAME#v}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Building version: $VERSION"
+
+      - name: Create archive
+        run: |
+          cd portable
+          zip -r "../FeedChecker-macOS-portable-v${{ steps.get_version.outputs.version }}.zip" .
+          cd ..
+          ls -lh FeedChecker-macOS-portable-*.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FeedChecker-macOS-portable-v${{ steps.get_version.outputs.version }}
+          path: |
+            portable/
+            FeedChecker-macOS-portable-v${{ steps.get_version.outputs.version }}.zip
+          retention-days: 30
+          compression-level: 0  # Уже заархивировано
+
+      - name: Create Release (if tag)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: FeedChecker-macOS-portable-v${{ steps.get_version.outputs.version }}.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## ✅ Build Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.get_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Artifacts:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Portable app: \`portable/\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Archive: \`FeedChecker-macOS-portable-v${{ steps.get_version.outputs.version }}.zip\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Size:**" >> $GITHUB_STEP_SUMMARY
+          du -sh portable/ >> $GITHUB_STEP_SUMMARY || echo "Size calculation failed" >> $GITHUB_STEP_SUMMARY
+
