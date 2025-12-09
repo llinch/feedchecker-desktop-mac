@@ -248,7 +248,36 @@ Or run from terminal:
 - All files must stay in this folder
 - Do not move individual files
 - On first run, macOS may ask for permission to run the app
-- If you see a security warning, right-click FeedChecker.app and select "Open"
+
+## If you see "App is damaged" error
+
+If macOS shows "FeedChecker.app is damaged and should be moved to the Trash", 
+this is a Gatekeeper security warning. To fix it:
+
+**Option 1: Use the fix script (Easiest)**
+Double-click `fix-macos-gatekeeper.sh` or run in Terminal:
+```bash
+cd /path/to/portable
+./fix-macos-gatekeeper.sh
+```
+
+**Option 2: Remove quarantine manually**
+Open Terminal and run:
+```bash
+cd /path/to/portable
+xattr -cr FeedChecker.app
+```
+
+**Option 3: Right-click and Open**
+1. Right-click (or Control+click) on FeedChecker.app
+2. Select "Open" from the context menu
+3. Click "Open" in the security dialog
+4. The app will be added to your security exceptions
+
+**Option 4: System Settings**
+1. Go to System Settings > Privacy & Security
+2. Scroll down to "Security"
+3. If you see a message about FeedChecker, click "Open Anyway"
 
 ## Size
 
@@ -269,13 +298,25 @@ EOF
 
 echo -e "${GREEN}  [OK] README created${NC}"
 
-# Make FeedChecker.app executable
+# Copy fix script for users
+if [ -f "fix-macos-gatekeeper.sh" ]; then
+    cp "fix-macos-gatekeeper.sh" "$PORTABLE_DIR/"
+    chmod +x "$PORTABLE_DIR/fix-macos-gatekeeper.sh"
+    echo -e "${GREEN}  [OK] Gatekeeper fix script copied${NC}"
+fi
+
+# Make FeedChecker.app executable and remove quarantine
 if [ -n "$APP_BUNDLE_PATH" ] && [ -d "$APP_BUNDLE_PATH" ]; then
     EXECUTABLE_PATH="$APP_BUNDLE_PATH/Contents/MacOS/FeedChecker"
     if [ -f "$EXECUTABLE_PATH" ]; then
         chmod +x "$EXECUTABLE_PATH"
         echo -e "${GREEN}  [OK] Made executable${NC}"
     fi
+    
+    # Remove quarantine attribute to prevent Gatekeeper warning
+    echo -e "${YELLOW}  Removing quarantine attribute...${NC}"
+    xattr -cr "$APP_BUNDLE_PATH" 2>/dev/null || true
+    echo -e "${GREEN}  [OK] Quarantine removed${NC}"
 fi
 
 # Summary

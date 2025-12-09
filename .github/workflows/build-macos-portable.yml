@@ -92,6 +92,13 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📦 Building version: $VERSION"
 
+      - name: Remove quarantine before archiving
+        run: |
+          if [ -d "portable/FeedChecker.app" ]; then
+            xattr -cr portable/FeedChecker.app
+            echo "✅ Quarantine removed from app bundle"
+          fi
+
       - name: Create archive
         run: |
           cd portable
@@ -131,4 +138,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Size:**" >> $GITHUB_STEP_SUMMARY
           du -sh portable/ >> $GITHUB_STEP_SUMMARY || echo "Size calculation failed" >> $GITHUB_STEP_SUMMARY
+
+
 
